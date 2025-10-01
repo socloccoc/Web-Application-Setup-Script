@@ -282,40 +282,60 @@ if [ "$INSTALL_MYSQL" = true ]; then
     systemctl start mysqld
     systemctl enable mysqld
 
+    # Wait for MySQL to start
+    sleep 5
+
     # Get temporary root password
-    TEMP_PASSWORD=$(grep 'temporary password' /var/log/mysqld.log 2>/dev/null | awk '{print $NF}')
+    TEMP_PASSWORD=$(grep 'temporary password' /var/log/mysqld.log 2>/dev/null | tail -1 | awk '{print $NF}')
 
     # Secure MySQL installation
     log_info "Configuring MySQL..."
 
     if [ -n "$TEMP_PASSWORD" ]; then
+        log_info "Found temporary password, changing root password..."
+
         # Change root password using temporary password
-        mysql --connect-expired-password -u root -p"${TEMP_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';" 2>/dev/null || true
+        mysql --connect-expired-password -u root -p"${TEMP_PASSWORD}" <<EOF
+ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
+FLUSH PRIVILEGES;
+EOF
     else
-        # Try without password first (fresh install)
-        mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';" 2>/dev/null || true
+        log_warn "No temporary password found, trying to set password directly..."
+        # Try without password first (fresh install or already configured)
+        mysql -u root <<EOF 2>/dev/null || mysql -u root -p"${MYSQL_ROOT_PASSWORD}" <<EOF
+ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
+FLUSH PRIVILEGES;
+EOF
     fi
 
     # Remove anonymous users
-    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DELETE FROM mysql.user WHERE User='';" 2>/dev/null || true
+    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" <<EOF
+DELETE FROM mysql.user WHERE User='';
+FLUSH PRIVILEGES;
+EOF
 
     # Disallow root login remotely
-    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');" 2>/dev/null || true
+    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" <<EOF
+DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+FLUSH PRIVILEGES;
+EOF
 
     # Remove test database
-    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DROP DATABASE IF EXISTS test;" 2>/dev/null || true
-    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';" 2>/dev/null || true
-
-    # Flush privileges
-    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;" 2>/dev/null || true
+    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" <<EOF
+DROP DATABASE IF EXISTS test;
+DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+FLUSH PRIVILEGES;
+EOF
 
     # Create database and user
     if [ -n "$MYSQL_DB_NAME" ] && [ -n "$MYSQL_DB_USER" ] && [ -n "$MYSQL_DB_PASSWORD" ]; then
         log_info "Creating database: $MYSQL_DB_NAME"
-        mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-        mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "CREATE USER IF NOT EXISTS '${MYSQL_DB_USER}'@'localhost' IDENTIFIED BY '${MYSQL_DB_PASSWORD}';"
-        mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "GRANT ALL PRIVILEGES ON ${MYSQL_DB_NAME}.* TO '${MYSQL_DB_USER}'@'localhost';"
-        mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;"
+        mysql -u root -p"${MYSQL_ROOT_PASSWORD}" <<EOF
+CREATE DATABASE IF NOT EXISTS ${MYSQL_DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '${MYSQL_DB_USER}'@'localhost' IDENTIFIED BY '${MYSQL_DB_PASSWORD}';
+GRANT ALL PRIVILEGES ON ${MYSQL_DB_NAME}.* TO '${MYSQL_DB_USER}'@'localhost';
+FLUSH PRIVILEGES;
+EOF
         log_info "Database and user created successfully"
     fi
 
