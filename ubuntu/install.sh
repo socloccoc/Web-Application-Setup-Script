@@ -611,6 +611,12 @@ if [ "$INSTALL_PROMETHEUS" = true ]; then
     tar -xvf prometheus-${PROM_VERSION}.linux-amd64.tar.gz
     cd prometheus-${PROM_VERSION}.linux-amd64
 
+    # Stop Prometheus if it's already running
+    if systemctl is-active --quiet prometheus 2>/dev/null; then
+        log_warn "Prometheus is already running, stopping it first..."
+        systemctl stop prometheus
+    fi
+
     # Copy binaries
     cp prometheus /usr/local/bin/
     cp promtool /usr/local/bin/
@@ -698,6 +704,12 @@ EOF
     wget https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz
     tar -xvf node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz
     cd node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64
+
+    # Stop Node Exporter if it's already running
+    if systemctl is-active --quiet node_exporter 2>/dev/null; then
+        log_warn "Node Exporter is already running, stopping it first..."
+        systemctl stop node_exporter
+    fi
 
     # Copy binary
     cp node_exporter /usr/local/bin/
