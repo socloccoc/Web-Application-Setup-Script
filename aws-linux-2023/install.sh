@@ -344,10 +344,60 @@ fi
 if [ "$INSTALL_SUPERVISOR" = true ]; then
     log_info "Installing Supervisor..."
 
-    dnf install -y supervisor
+    # Install Python and pip if not already installed
+    dnf install -y python3 python3-pip
 
-    # Create log directory
+    # Install supervisor via pip
+    pip3 install supervisor
+
+    # Create supervisor directories
+    mkdir -p /etc/supervisor/conf.d
     mkdir -p /var/log/supervisor
+
+    # Create supervisor config file
+    cat > /etc/supervisord.conf <<'SUPERVISOR_EOF'
+[unix_http_server]
+file=/var/run/supervisor.sock
+chmod=0700
+
+[supervisord]
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
+childlogdir=/var/log/supervisor
+nodaemon=false
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[supervisorctl]
+serverurl=unix:///var/run/supervisor.sock
+
+[include]
+files = /etc/supervisor/conf.d/*.conf
+SUPERVISOR_EOF
+
+    # Create systemd service file for supervisor
+    cat > /etc/systemd/system/supervisord.service <<'SERVICE_EOF'
+[Unit]
+Description=Supervisor process control system for UNIX
+Documentation=http://supervisord.org
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/local/bin/supervisord -c /etc/supervisord.conf
+ExecStop=/usr/local/bin/supervisorctl shutdown
+ExecReload=/usr/local/bin/supervisorctl reload
+KillMode=process
+Restart=on-failure
+RestartSec=50s
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+    # Reload systemd
+    systemctl daemon-reload
 
     # Start and enable Supervisor
     systemctl start supervisord

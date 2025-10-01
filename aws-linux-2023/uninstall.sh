@@ -108,10 +108,20 @@ fi
 
 if command -v supervisord &> /dev/null; then
     log_info "Removing Supervisor..."
-    dnf remove -y supervisor
+
+    # Uninstall supervisor from pip
+    pip3 uninstall -y supervisor 2>/dev/null || true
+
+    # Remove systemd service
+    rm -f /etc/systemd/system/supervisord.service
+    systemctl daemon-reload
+
+    # Remove config and log directories
     rm -rf /var/log/supervisor
     rm -rf /etc/supervisord.conf
-    rm -rf /etc/supervisord.d
+    rm -rf /etc/supervisor
+    rm -rf /var/run/supervisor.sock
+    rm -rf /var/run/supervisord.pid
 fi
 
 # Stop and remove MySQL
