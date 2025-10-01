@@ -42,6 +42,8 @@ echo "  - Supervisor"
 echo "  - NVM + Node + Yarn + PM2"
 echo "  - Redis"
 echo "  - Let's Encrypt SSL (Certbot)"
+echo "  - Prometheus"
+echo "  - Grafana"
 echo ""
 read -p "Are you sure you want to continue? (yes/no): " confirm
 
@@ -261,6 +263,64 @@ if command -v certbot &> /dev/null; then
     fi
 fi
 
+# Stop and remove Prometheus
+if systemctl is-active --quiet prometheus 2>/dev/null; then
+    log_info "Stopping Prometheus..."
+    systemctl stop prometheus
+    systemctl disable prometheus
+fi
+
+if command -v prometheus &> /dev/null || [ -f "/usr/local/bin/prometheus" ]; then
+    log_info "Removing Prometheus..."
+
+    # Stop service
+    systemctl stop prometheus 2>/dev/null || true
+    systemctl disable prometheus 2>/dev/null || true
+
+    # Remove systemd service
+    rm -f /etc/systemd/system/prometheus.service
+    systemctl daemon-reload
+
+    # Remove binaries
+    rm -f /usr/local/bin/prometheus
+    rm -f /usr/local/bin/promtool
+
+    # Remove config and data directories
+    rm -rf /etc/prometheus
+    rm -rf /var/lib/prometheus
+
+    # Remove user and group
+    userdel prometheus 2>/dev/null || true
+    groupdel prometheus 2>/dev/null || true
+
+    log_info "Prometheus removed"
+fi
+
+# Stop and remove Grafana
+if systemctl is-active --quiet grafana-server 2>/dev/null; then
+    log_info "Stopping Grafana..."
+    systemctl stop grafana-server
+    systemctl disable grafana-server
+fi
+
+if command -v grafana-server &> /dev/null; then
+    log_info "Removing Grafana..."
+
+    # Remove Grafana package
+    apt-get remove -y grafana
+    apt-get purge -y grafana
+
+    # Remove repository
+    rm -f /etc/apt/sources.list.d/grafana.list
+
+    # Remove config and data directories
+    rm -rf /etc/grafana
+    rm -rf /var/lib/grafana
+    rm -rf /var/log/grafana
+
+    log_info "Grafana removed"
+fi
+
 # Clean up APT
 log_info "Cleaning up package cache..."
 apt-get autoremove -y
@@ -312,6 +372,26 @@ fi
 
 if [ -d "/etc/letsencrypt" ]; then
     log_warn "SSL certificates still exist: /etc/letsencrypt"
+    remaining=true
+fi
+
+if [ -d "/etc/prometheus" ]; then
+    log_warn "Prometheus config directory still exists: /etc/prometheus"
+    remaining=true
+fi
+
+if [ -d "/var/lib/prometheus" ]; then
+    log_warn "Prometheus data directory still exists: /var/lib/prometheus"
+    remaining=true
+fi
+
+if [ -d "/etc/grafana" ]; then
+    log_warn "Grafana config directory still exists: /etc/grafana"
+    remaining=true
+fi
+
+if [ -d "/var/lib/grafana" ]; then
+    log_warn "Grafana data directory still exists: /var/lib/grafana"
     remaining=true
 fi
 

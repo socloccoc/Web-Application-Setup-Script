@@ -61,6 +61,8 @@ INSTALL_SUPERVISOR=false
 INSTALL_NVM=false
 INSTALL_REDIS=false
 INSTALL_CERTBOT=false
+INSTALL_PROMETHEUS=false
+INSTALL_GRAFANA=false
 MYSQL_ROOT_PASSWORD=""
 MYSQL_DB_NAME=""
 MYSQL_DB_USER=""
@@ -86,7 +88,8 @@ echo "3. Supervisor"
 echo "4. Nginx + NVM + Node + Yarn + PM2"
 echo "5. Redis"
 echo "6. Let's Encrypt SSL (Certbot)"
-echo "7. All of the above"
+echo "7. Prometheus + Grafana (Monitoring)"
+echo "8. All of the above"
 echo ""
 read -p "Enter your choices (comma-separated, e.g., 1,2,3): " choices
 
@@ -117,6 +120,10 @@ for choice in "${CHOICE_ARRAY[@]}"; do
             INSTALL_NGINX=true
             ;;
         7)
+            INSTALL_PROMETHEUS=true
+            INSTALL_GRAFANA=true
+            ;;
+        8)
             INSTALL_PHP=true
             INSTALL_NGINX=true
             INSTALL_MYSQL=true
@@ -124,6 +131,8 @@ for choice in "${CHOICE_ARRAY[@]}"; do
             INSTALL_NVM=true
             INSTALL_REDIS=true
             INSTALL_CERTBOT=true
+            INSTALL_PROMETHEUS=true
+            INSTALL_GRAFANA=true
             ;;
         *)
             log_error "Invalid choice: $choice"
@@ -575,6 +584,146 @@ if [ "$INSTALL_CERTBOT" = true ]; then
     systemctl start certbot.timer
 fi
 
+# Install Prometheus
+if [ "$INSTALL_PROMETHEUS" = true ]; then
+    log_step "Installing Prometheus..."
+
+    # Create prometheus user
+    if ! id prometheus &>/dev/null; then
+        useradd --no-create-home --shell /bin/false prometheus
+    fi
+
+    # Create directories
+    mkdir -p /etc/prometheus
+    mkdir -p /var/lib/prometheus
+
+    # Get latest Prometheus version
+    log_info "Downloading latest Prometheus..."
+    PROM_VERSION=$(curl -s https://api.github.com/repos/prometheus/prometheus/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//')
+
+    if [ -z "$PROM_VERSION" ]; then
+        PROM_VERSION="2.48.0"
+        log_warn "Could not detect latest version, using v${PROM_VERSION}"
+    fi
+
+    cd /tmp
+    wget https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz
+    tar -xvf prometheus-${PROM_VERSION}.linux-amd64.tar.gz
+    cd prometheus-${PROM_VERSION}.linux-amd64
+
+    # Copy binaries
+    cp prometheus /usr/local/bin/
+    cp promtool /usr/local/bin/
+
+    # Copy console files
+    cp -r consoles /etc/prometheus
+    cp -r console_libraries /etc/prometheus
+
+    # Set ownership
+    chown prometheus:prometheus /usr/local/bin/prometheus
+    chown prometheus:prometheus /usr/local/bin/promtool
+    chown -R prometheus:prometheus /etc/prometheus
+    chown -R prometheus:prometheus /var/lib/prometheus
+
+    # Create Prometheus configuration
+    cat > /etc/prometheus/prometheus.yml <<'EOF'
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ['localhost:9100']
+EOF
+
+    chown prometheus:prometheus /etc/prometheus/prometheus.yml
+
+    # Create systemd service
+    cat > /etc/systemd/system/prometheus.service <<'EOF'
+[Unit]
+Description=Prometheus
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+ExecStart=/usr/local/bin/prometheus \
+    --config.file /etc/prometheus/prometheus.yml \
+    --storage.tsdb.path /var/lib/prometheus/ \
+    --web.console.templates=/etc/prometheus/consoles \
+    --web.console.libraries=/etc/prometheus/console_libraries
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Start Prometheus
+    systemctl daemon-reload
+    systemctl start prometheus
+    systemctl enable prometheus
+
+    # Cleanup
+    cd /tmp
+    rm -rf prometheus-${PROM_VERSION}.linux-amd64*
+
+    log_info "Prometheus ${PROM_VERSION} installed successfully"
+    log_info "Prometheus is running on http://localhost:9090"
+fi
+
+# Install Grafana
+if [ "$INSTALL_GRAFANA" = true ]; then
+    log_step "Installing Grafana..."
+
+    # Install prerequisites
+    apt-get install -y apt-transport-https software-properties-common wget
+
+    # Add Grafana GPG key
+    wget -q -O - https://packages.grafana.com/gpg.key | apt-key add -
+
+    # Add Grafana repository
+    echo "deb https://packages.grafana.com/oss/deb stable main" | tee /etc/apt/sources.list.d/grafana.list
+
+    # Update and install Grafana
+    apt-get update
+    apt-get install -y grafana
+
+    # Create datasource provisioning directory
+    mkdir -p /etc/grafana/provisioning/datasources
+
+    # Auto-provision Prometheus datasource if Prometheus is installed
+    if [ "$INSTALL_PROMETHEUS" = true ]; then
+        log_info "Configuring Prometheus datasource in Grafana..."
+        cat > /etc/grafana/provisioning/datasources/prometheus.yml <<'EOF'
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://localhost:9090
+    isDefault: true
+    editable: true
+EOF
+    fi
+
+    # Start Grafana
+    systemctl daemon-reload
+    systemctl start grafana-server
+    systemctl enable grafana-server
+
+    GRAFANA_VERSION=$(grafana-server -v 2>&1 | grep -oP 'Version \K[0-9.]+' || echo "latest")
+    log_info "Grafana ${GRAFANA_VERSION} installed successfully"
+    log_info "Grafana is running on http://localhost:3000"
+    log_info "Default credentials: admin / admin (change on first login)"
+fi
+
 # Summary
 echo ""
 echo "=========================================="
@@ -592,6 +741,8 @@ log_info "Installed services:"
 [ "$INSTALL_NVM" = true ] && echo "  ✓ NVM + Node.js + Yarn + PM2"
 [ "$INSTALL_REDIS" = true ] && echo "  ✓ Redis"
 [ "$INSTALL_CERTBOT" = true ] && echo "  ✓ Let's Encrypt SSL (Certbot)"
+[ "$INSTALL_PROMETHEUS" = true ] && echo "  ✓ Prometheus"
+[ "$INSTALL_GRAFANA" = true ] && echo "  ✓ Grafana"
 
 echo ""
 
@@ -619,6 +770,8 @@ log_info "Next steps:"
 [ "$INSTALL_REDIS" = true ] && echo "  - Test Redis: redis-cli ping"
 [ "$INSTALL_CERTBOT" = true ] && echo "  - Obtain SSL: sudo certbot --nginx -d your-domain.com"
 [ "$INSTALL_CERTBOT" = true ] && [ -n "$DOMAIN_NAME" ] && echo "  - Your site: https://$DOMAIN_NAME"
+[ "$INSTALL_PROMETHEUS" = true ] && echo "  - Prometheus UI: http://your-server-ip:9090"
+[ "$INSTALL_GRAFANA" = true ] && echo "  - Grafana UI: http://your-server-ip:3000 (admin/admin)"
 
 echo ""
 log_info "Service status:"
@@ -627,6 +780,8 @@ log_info "Service status:"
 [ "$INSTALL_MYSQL" = true ] && systemctl is-active --quiet mysql && echo "  ✓ MySQL: running" || echo "  ✗ MySQL: not running"
 [ "$INSTALL_SUPERVISOR" = true ] && systemctl is-active --quiet supervisor && echo "  ✓ Supervisor: running" || echo "  ✗ Supervisor: not running"
 [ "$INSTALL_REDIS" = true ] && systemctl is-active --quiet redis-server && echo "  ✓ Redis: running" || echo "  ✗ Redis: not running"
+[ "$INSTALL_PROMETHEUS" = true ] && systemctl is-active --quiet prometheus && echo "  ✓ Prometheus: running" || echo "  ✗ Prometheus: not running"
+[ "$INSTALL_GRAFANA" = true ] && systemctl is-active --quiet grafana-server && echo "  ✓ Grafana: running" || echo "  ✗ Grafana: not running"
 
 echo ""
 log_info "Installation log saved. Review any warnings above."
