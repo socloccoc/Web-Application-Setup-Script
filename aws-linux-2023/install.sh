@@ -53,7 +53,7 @@ show_menu() {
     echo "1. PHP + Nginx + PHP-FPM + Composer"
     echo "2. MySQL"
     echo "3. Supervisor"
-    echo "4. NVM + Node + Yarn + PM2"
+    echo "4. Nginx + NVM + Node + Yarn + PM2"
     echo "5. Install All"
     echo "6. Start Installation"
     echo "0. Exit"
@@ -77,8 +77,9 @@ toggle_service() {
             log_info "Selected: Supervisor"
             ;;
         4)
+            INSTALL_NGINX=true
             INSTALL_NVM=true
-            log_info "Selected: NVM + Node + Yarn + PM2"
+            log_info "Selected: Nginx + NVM + Node + Yarn + PM2"
             ;;
         5)
             INSTALL_PHP=true
@@ -96,10 +97,11 @@ while true; do
     show_menu
 
     echo "Current selections:"
-    [ "$INSTALL_PHP" = true ] && echo "   PHP + Nginx + PHP-FPM + Composer"
-    [ "$INSTALL_MYSQL" = true ] && echo "   MySQL"
-    [ "$INSTALL_SUPERVISOR" = true ] && echo "   Supervisor"
-    [ "$INSTALL_NVM" = true ] && echo "   NVM + Node + Yarn + PM2"
+    [ "$INSTALL_PHP" = true ] && echo "  ✓ PHP + Nginx + PHP-FPM + Composer"
+    [ "$INSTALL_NGINX" = true ] && [ "$INSTALL_PHP" = false ] && echo "  ✓ Nginx"
+    [ "$INSTALL_MYSQL" = true ] && echo "  ✓ MySQL"
+    [ "$INSTALL_SUPERVISOR" = true ] && echo "  ✓ Supervisor"
+    [ "$INSTALL_NVM" = true ] && echo "  ✓ NVM + Node + Yarn + PM2"
     echo ""
 
     read -p "Enter your choice: " choice
@@ -154,6 +156,18 @@ log_info "Starting installation..."
 # Update system
 log_info "Updating system packages..."
 dnf update -y
+
+# Install Nginx (standalone or with PHP)
+if [ "$INSTALL_NGINX" = true ] && [ "$INSTALL_PHP" = false ]; then
+    log_info "Installing Nginx..."
+    dnf install -y nginx
+
+    # Start and enable Nginx
+    systemctl start nginx
+    systemctl enable nginx
+
+    log_info "Nginx $(nginx -v 2>&1 | cut -d '/' -f 2) installed"
+fi
 
 # Install PHP + Nginx + PHP-FPM + Composer
 if [ "$INSTALL_PHP" = true ]; then
@@ -286,6 +300,13 @@ if [ "$INSTALL_PHP" = true ]; then
     echo "  - PHP version: $(php -v | head -n 1 | cut -d ' ' -f 2)"
     echo "  - Nginx config: /etc/nginx/nginx.conf"
     echo "  - PHP-FPM config: /etc/php-fpm.d/www.conf"
+    echo "  - Web root: /usr/share/nginx/html"
+fi
+
+if [ "$INSTALL_NGINX" = true ] && [ "$INSTALL_PHP" = false ]; then
+    echo "Nginx:"
+    echo "  - Version: $(nginx -v 2>&1 | cut -d '/' -f 2)"
+    echo "  - Config: /etc/nginx/nginx.conf"
     echo "  - Web root: /usr/share/nginx/html"
 fi
 
