@@ -302,10 +302,8 @@ EOF
     else
         log_warn "No temporary password found, trying to set password directly..."
         # Try without password first (fresh install or already configured)
-        mysql -u root <<EOF 2>/dev/null || mysql -u root -p"${MYSQL_ROOT_PASSWORD}" <<EOF
-ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
-FLUSH PRIVILEGES;
-EOF
+        mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || \
+        mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;"
     fi
 
     # Remove anonymous users
