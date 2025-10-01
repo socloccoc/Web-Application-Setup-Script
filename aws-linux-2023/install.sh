@@ -268,6 +268,13 @@ fi
 if [ "$INSTALL_MYSQL" = true ]; then
     log_info "Installing MySQL..."
 
+    # Add MySQL repository
+    log_info "Adding MySQL repository..."
+    dnf install -y https://dev.mysql.com/get/mysql80-community-release-el9-1.noarch.rpm
+
+    # Import MySQL GPG key
+    rpm --import https://repo.mysql.com/RPM-GPG-KEY-mysql-2023
+
     # Install MySQL 8.0
     dnf install -y mysql-community-server
 
@@ -275,21 +282,32 @@ if [ "$INSTALL_MYSQL" = true ]; then
     systemctl start mysqld
     systemctl enable mysqld
 
+    # Get temporary root password
+    TEMP_PASSWORD=$(grep 'temporary password' /var/log/mysqld.log 2>/dev/null | awk '{print $NF}')
+
     # Secure MySQL installation
     log_info "Configuring MySQL..."
 
-    # Set root password
-    mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';"
+    if [ -n "$TEMP_PASSWORD" ]; then
+        # Change root password using temporary password
+        mysql --connect-expired-password -u root -p"${TEMP_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';" 2>/dev/null || true
+    else
+        # Try without password first (fresh install)
+        mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';" 2>/dev/null || true
+    fi
 
     # Remove anonymous users
-    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DELETE FROM mysql.user WHERE User='';"
+    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DELETE FROM mysql.user WHERE User='';" 2>/dev/null || true
 
     # Disallow root login remotely
-    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');"
+    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');" 2>/dev/null || true
 
     # Remove test database
-    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DROP DATABASE IF EXISTS test;"
-    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';"
+    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DROP DATABASE IF EXISTS test;" 2>/dev/null || true
+    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';" 2>/dev/null || true
+
+    # Flush privileges
+    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;" 2>/dev/null || true
 
     # Create database and user
     if [ -n "$MYSQL_DB_NAME" ] && [ -n "$MYSQL_DB_USER" ] && [ -n "$MYSQL_DB_PASSWORD" ]; then

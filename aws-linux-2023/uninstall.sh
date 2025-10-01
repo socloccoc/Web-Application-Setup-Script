@@ -123,7 +123,11 @@ fi
 
 if command -v mysql &> /dev/null; then
     log_info "Removing MySQL..."
-    dnf remove -y mysql-community-server mysql-community-client mysql-community-common mysql-community-libs
+    dnf remove -y mysql-community-server mysql-community-client mysql-community-common mysql-community-libs mysql-community-libs-compat
+
+    # Remove MySQL repository
+    dnf remove -y mysql80-community-release 2>/dev/null || true
+    rm -rf /etc/yum.repos.d/mysql-community*.repo
 
     # Remove MySQL data and configs
     rm -rf /var/lib/mysql
