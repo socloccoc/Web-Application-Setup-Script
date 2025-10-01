@@ -40,6 +40,8 @@ echo "  - PHP + Nginx + PHP-FPM + Composer"
 echo "  - MySQL (including all databases)"
 echo "  - Supervisor"
 echo "  - NVM + Node + Yarn + PM2"
+echo "  - Redis"
+echo "  - Let's Encrypt SSL (Certbot)"
 echo ""
 read -p "Are you sure you want to continue? (yes/no): " confirm
 
@@ -198,6 +200,47 @@ if command -v nginx &> /dev/null; then
     groupdel nginx 2>/dev/null || true
 fi
 
+# Stop and remove Redis
+if systemctl is-active --quiet redis6 2>/dev/null; then
+    log_info "Stopping Redis..."
+    systemctl stop redis6
+    systemctl disable redis6
+fi
+
+if command -v redis-cli &> /dev/null; then
+    log_info "Removing Redis..."
+    dnf remove -y redis6
+
+    # Remove Redis data and configs
+    rm -rf /etc/redis6
+    rm -rf /var/lib/redis6
+    rm -rf /var/log/redis6
+    rm -rf /var/run/redis6
+fi
+
+# Remove Certbot (Let's Encrypt)
+if command -v certbot &> /dev/null; then
+    log_info "Removing Certbot..."
+
+    # Stop renewal timer
+    systemctl stop certbot-renew.timer 2>/dev/null || true
+    systemctl disable certbot-renew.timer 2>/dev/null || true
+
+    # Remove certbot packages
+    dnf remove -y python3-certbot python3-certbot-nginx
+
+    # Ask before removing SSL certificates
+    read -p "Remove all SSL certificates? (yes/no): " remove_certs
+    if [ "$remove_certs" = "yes" ]; then
+        rm -rf /etc/letsencrypt
+        rm -rf /var/lib/letsencrypt
+        rm -rf /var/log/letsencrypt
+        log_info "SSL certificates removed"
+    else
+        log_warn "SSL certificates kept at /etc/letsencrypt"
+    fi
+fi
+
 # Clean up DNF cache
 log_info "Cleaning up package cache..."
 dnf autoremove -y
@@ -233,6 +276,16 @@ fi
 
 if [ -d "/etc/supervisord.d" ]; then
     log_warn "Supervisor config directory still exists: /etc/supervisord.d"
+    remaining=true
+fi
+
+if [ -d "/etc/redis6" ]; then
+    log_warn "Redis config directory still exists: /etc/redis6"
+    remaining=true
+fi
+
+if [ -d "/etc/letsencrypt" ]; then
+    log_warn "SSL certificates still exist: /etc/letsencrypt"
     remaining=true
 fi
 

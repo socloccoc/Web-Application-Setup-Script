@@ -36,12 +36,15 @@ INSTALL_NGINX=false
 INSTALL_MYSQL=false
 INSTALL_SUPERVISOR=false
 INSTALL_NVM=false
+INSTALL_REDIS=false
+INSTALL_CERTBOT=false
 MYSQL_ROOT_PASSWORD=""
 MYSQL_DB_NAME=""
 MYSQL_DB_USER=""
 MYSQL_DB_PASSWORD=""
 PHP_VERSION=""
 NODE_VERSION=""
+DOMAIN_NAME=""
 
 # Function to display menu
 show_menu() {
@@ -56,8 +59,10 @@ show_menu() {
     echo "2. MySQL"
     echo "3. Supervisor"
     echo "4. Nginx + NVM + Node + Yarn + PM2"
-    echo "5. Install All"
-    echo "6. Start Installation"
+    echo "5. Redis"
+    echo "6. Let's Encrypt SSL (Certbot)"
+    echo "7. Install All"
+    echo "8. Start Installation"
     echo "0. Exit"
     echo ""
 }
@@ -84,11 +89,22 @@ toggle_service() {
             log_info "Selected: Nginx + NVM + Node + Yarn + PM2"
             ;;
         5)
+            INSTALL_REDIS=true
+            log_info "Selected: Redis"
+            ;;
+        6)
+            INSTALL_CERTBOT=true
+            INSTALL_NGINX=true
+            log_info "Selected: Let's Encrypt SSL (Certbot)"
+            ;;
+        7)
             INSTALL_PHP=true
             INSTALL_NGINX=true
             INSTALL_MYSQL=true
             INSTALL_SUPERVISOR=true
             INSTALL_NVM=true
+            INSTALL_REDIS=true
+            INSTALL_CERTBOT=true
             log_info "Selected: All services"
             ;;
     esac
@@ -104,6 +120,8 @@ while true; do
     [ "$INSTALL_MYSQL" = true ] && echo "  ✓ MySQL"
     [ "$INSTALL_SUPERVISOR" = true ] && echo "  ✓ Supervisor"
     [ "$INSTALL_NVM" = true ] && echo "  ✓ NVM + Node + Yarn + PM2"
+    [ "$INSTALL_REDIS" = true ] && echo "  ✓ Redis"
+    [ "$INSTALL_CERTBOT" = true ] && echo "  ✓ Let's Encrypt SSL (Certbot)"
     echo ""
 
     read -p "Enter your choice: " choice
@@ -113,11 +131,11 @@ while true; do
             log_info "Exiting..."
             exit 0
             ;;
-        1|2|3|4|5)
+        1|2|3|4|5|6|7)
             toggle_service $choice
             sleep 1
             ;;
-        6)
+        8)
             break
             ;;
         *)
@@ -128,7 +146,7 @@ while true; do
 done
 
 # Check if any service is selected
-if [ "$INSTALL_PHP" = false ] && [ "$INSTALL_MYSQL" = false ] && [ "$INSTALL_SUPERVISOR" = false ] && [ "$INSTALL_NVM" = false ]; then
+if [ "$INSTALL_PHP" = false ] && [ "$INSTALL_MYSQL" = false ] && [ "$INSTALL_SUPERVISOR" = false ] && [ "$INSTALL_NVM" = false ] && [ "$INSTALL_REDIS" = false ] && [ "$INSTALL_CERTBOT" = false ]; then
     log_error "No services selected. Exiting..."
     exit 1
 fi
@@ -485,6 +503,72 @@ if [ "$INSTALL_NVM" = true ]; then
     log_info "PM2 $PM2_VER installed"
 fi
 
+# Install Redis
+if [ "$INSTALL_REDIS" = true ]; then
+    log_info "Installing Redis..."
+
+    dnf install -y redis6
+
+    # Start and enable Redis
+    systemctl start redis6
+    systemctl enable redis6
+
+    # Configure Redis to bind to localhost only (security)
+    sed -i 's/^bind .*/bind 127.0.0.1 ::1/' /etc/redis6/redis6.conf || true
+
+    # Restart Redis to apply config
+    systemctl restart redis6
+
+    log_info "Redis $(redis-cli --version | cut -d ' ' -f 2) installed"
+    log_info "Redis is running on 127.0.0.1:6379"
+fi
+
+# Install Let's Encrypt / Certbot
+if [ "$INSTALL_CERTBOT" = true ]; then
+    log_info "Installing Certbot (Let's Encrypt)..."
+
+    # Install certbot and nginx plugin
+    dnf install -y python3-certbot python3-certbot-nginx
+
+    log_info "Certbot installed successfully"
+
+    # Ask for domain configuration
+    if [ "$INSTALL_NGINX" = true ]; then
+        echo ""
+        log_warn "Let's Encrypt SSL Certificate Setup"
+        echo "IMPORTANT: Make sure your domain points to this server's IP address"
+        echo ""
+        read -p "Do you want to obtain SSL certificate now? (yes/no): " obtain_ssl
+
+        if [ "$obtain_ssl" = "yes" ]; then
+            read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+            read -p "Enter your email address: " EMAIL_ADDRESS
+
+            log_info "Obtaining SSL certificate for $DOMAIN_NAME..."
+            certbot --nginx -d "$DOMAIN_NAME" --non-interactive --agree-tos -m "$EMAIL_ADDRESS"
+
+            if [ $? -eq 0 ]; then
+                log_info "SSL certificate obtained successfully!"
+                log_info "Your site is now accessible via HTTPS: https://$DOMAIN_NAME"
+            else
+                log_error "Failed to obtain SSL certificate"
+                log_warn "You can try manually later with: sudo certbot --nginx -d your-domain.com"
+            fi
+        else
+            log_info "Skipping SSL certificate setup"
+            log_info "You can obtain certificate later with: sudo certbot --nginx -d your-domain.com"
+        fi
+    else
+        log_warn "Nginx is not installed. Install Nginx first to use Certbot with Nginx plugin"
+        log_info "You can use Certbot standalone mode: sudo certbot certonly --standalone -d your-domain.com"
+    fi
+
+    # Setup auto-renewal
+    log_info "Setting up automatic SSL certificate renewal..."
+    systemctl enable certbot-renew.timer
+    systemctl start certbot-renew.timer
+fi
+
 # Summary
 echo ""
 echo "=========================================="
@@ -539,6 +623,28 @@ if [ "$INSTALL_NVM" = true ]; then
     echo "  Or load NVM in current shell:"
     echo "    export NVM_DIR=\"/home/$ACTUAL_USER/.nvm\""
     echo "    [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\""
+fi
+
+if [ "$INSTALL_REDIS" = true ]; then
+    echo ""
+    echo "Redis:"
+    echo "  - Version: $(redis-cli --version | cut -d ' ' -f 2)"
+    echo "  - Running on: 127.0.0.1:6379"
+    echo "  - Config: /etc/redis6/redis6.conf"
+    echo "  - Test connection: redis-cli ping"
+fi
+
+if [ "$INSTALL_CERTBOT" = true ]; then
+    echo ""
+    echo "Let's Encrypt SSL (Certbot):"
+    echo "  - Version: $(certbot --version | cut -d ' ' -f 2)"
+    if [ -n "$DOMAIN_NAME" ]; then
+        echo "  - SSL certificate for: $DOMAIN_NAME"
+        echo "  - Auto-renewal enabled"
+    fi
+    echo "  - Obtain certificate: sudo certbot --nginx -d your-domain.com"
+    echo "  - Renew certificates: sudo certbot renew"
+    echo "  - List certificates: sudo certbot certificates"
 fi
 
 echo ""

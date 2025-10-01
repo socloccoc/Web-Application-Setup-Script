@@ -59,12 +59,15 @@ INSTALL_NGINX=false
 INSTALL_MYSQL=false
 INSTALL_SUPERVISOR=false
 INSTALL_NVM=false
+INSTALL_REDIS=false
+INSTALL_CERTBOT=false
 MYSQL_ROOT_PASSWORD=""
 MYSQL_DB_NAME=""
 MYSQL_DB_USER=""
 MYSQL_DB_PASSWORD=""
 PHP_VERSION=""
 NODE_VERSION=""
+DOMAIN_NAME=""
 
 # Get the actual user (not root)
 ACTUAL_USER=${SUDO_USER:-$USER}
@@ -81,7 +84,9 @@ echo "1. PHP + Nginx + PHP-FPM + Composer"
 echo "2. MySQL"
 echo "3. Supervisor"
 echo "4. Nginx + NVM + Node + Yarn + PM2"
-echo "5. All of the above"
+echo "5. Redis"
+echo "6. Let's Encrypt SSL (Certbot)"
+echo "7. All of the above"
 echo ""
 read -p "Enter your choices (comma-separated, e.g., 1,2,3): " choices
 
@@ -105,11 +110,20 @@ for choice in "${CHOICE_ARRAY[@]}"; do
             INSTALL_NVM=true
             ;;
         5)
+            INSTALL_REDIS=true
+            ;;
+        6)
+            INSTALL_CERTBOT=true
+            INSTALL_NGINX=true
+            ;;
+        7)
             INSTALL_PHP=true
             INSTALL_NGINX=true
             INSTALL_MYSQL=true
             INSTALL_SUPERVISOR=true
             INSTALL_NVM=true
+            INSTALL_REDIS=true
+            INSTALL_CERTBOT=true
             ;;
         *)
             log_error "Invalid choice: $choice"
@@ -125,6 +139,8 @@ log_info "Selected services:"
 [ "$INSTALL_MYSQL" = true ] && echo "  - MySQL"
 [ "$INSTALL_SUPERVISOR" = true ] && echo "  - Supervisor"
 [ "$INSTALL_NVM" = true ] && echo "  - NVM + Node + Yarn + PM2"
+[ "$INSTALL_REDIS" = true ] && echo "  - Redis"
+[ "$INSTALL_CERTBOT" = true ] && echo "  - Let's Encrypt SSL (Certbot)"
 echo ""
 read -p "Continue with installation? (yes/no): " confirm
 
@@ -493,6 +509,72 @@ if [ "$INSTALL_NVM" = true ]; then
     log_info "To use Node.js, switch to user: su - $ACTUAL_USER"
 fi
 
+# Install Redis
+if [ "$INSTALL_REDIS" = true ]; then
+    log_step "Installing Redis..."
+
+    apt-get install -y redis-server
+
+    # Configure Redis to bind to localhost only (security)
+    sed -i 's/^bind .*/bind 127.0.0.1 ::1/' /etc/redis/redis.conf || true
+
+    # Set Redis to be managed by systemd
+    sed -i 's/^supervised no/supervised systemd/' /etc/redis/redis.conf || true
+
+    # Start and enable Redis
+    systemctl restart redis-server
+    systemctl enable redis-server
+
+    log_info "Redis $(redis-cli --version | cut -d ' ' -f 2) installed"
+    log_info "Redis is running on 127.0.0.1:6379"
+fi
+
+# Install Let's Encrypt / Certbot
+if [ "$INSTALL_CERTBOT" = true ]; then
+    log_step "Installing Certbot (Let's Encrypt)..."
+
+    # Install certbot and nginx plugin
+    apt-get install -y certbot python3-certbot-nginx
+
+    log_info "Certbot installed successfully"
+
+    # Ask for domain configuration
+    if [ "$INSTALL_NGINX" = true ]; then
+        echo ""
+        log_warn "Let's Encrypt SSL Certificate Setup"
+        echo "IMPORTANT: Make sure your domain points to this server's IP address"
+        echo ""
+        read -p "Do you want to obtain SSL certificate now? (yes/no): " obtain_ssl
+
+        if [ "$obtain_ssl" = "yes" ]; then
+            read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+            read -p "Enter your email address: " EMAIL_ADDRESS
+
+            log_info "Obtaining SSL certificate for $DOMAIN_NAME..."
+            certbot --nginx -d "$DOMAIN_NAME" --non-interactive --agree-tos -m "$EMAIL_ADDRESS"
+
+            if [ $? -eq 0 ]; then
+                log_info "SSL certificate obtained successfully!"
+                log_info "Your site is now accessible via HTTPS: https://$DOMAIN_NAME"
+            else
+                log_error "Failed to obtain SSL certificate"
+                log_warn "You can try manually later with: sudo certbot --nginx -d your-domain.com"
+            fi
+        else
+            log_info "Skipping SSL certificate setup"
+            log_info "You can obtain certificate later with: sudo certbot --nginx -d your-domain.com"
+        fi
+    else
+        log_warn "Nginx is not installed. Install Nginx first to use Certbot with Nginx plugin"
+        log_info "You can use Certbot standalone mode: sudo certbot certonly --standalone -d your-domain.com"
+    fi
+
+    # Setup auto-renewal (Ubuntu uses systemd timer by default)
+    log_info "Setting up automatic SSL certificate renewal..."
+    systemctl enable certbot.timer
+    systemctl start certbot.timer
+fi
+
 # Summary
 echo ""
 echo "=========================================="
@@ -508,6 +590,8 @@ log_info "Installed services:"
 [ "$INSTALL_MYSQL" = true ] && echo "  ✓ MySQL"
 [ "$INSTALL_SUPERVISOR" = true ] && echo "  ✓ Supervisor"
 [ "$INSTALL_NVM" = true ] && echo "  ✓ NVM + Node.js + Yarn + PM2"
+[ "$INSTALL_REDIS" = true ] && echo "  ✓ Redis"
+[ "$INSTALL_CERTBOT" = true ] && echo "  ✓ Let's Encrypt SSL (Certbot)"
 
 echo ""
 
@@ -532,6 +616,9 @@ log_info "Next steps:"
 [ "$INSTALL_SUPERVISOR" = true ] && echo "  - Add Supervisor configs to: /etc/supervisor/conf.d/"
 [ "$INSTALL_NVM" = true ] && echo "  - Use Node.js: su - $ACTUAL_USER"
 [ "$INSTALL_NVM" = true ] && echo "  - Node commands: node, npm, yarn, pm2"
+[ "$INSTALL_REDIS" = true ] && echo "  - Test Redis: redis-cli ping"
+[ "$INSTALL_CERTBOT" = true ] && echo "  - Obtain SSL: sudo certbot --nginx -d your-domain.com"
+[ "$INSTALL_CERTBOT" = true ] && [ -n "$DOMAIN_NAME" ] && echo "  - Your site: https://$DOMAIN_NAME"
 
 echo ""
 log_info "Service status:"
@@ -539,6 +626,7 @@ log_info "Service status:"
 [ "$INSTALL_PHP" = true ] && systemctl is-active --quiet php${PHP_VERSION}-fpm && echo "  ✓ PHP-FPM: running" || echo "  ✗ PHP-FPM: not running"
 [ "$INSTALL_MYSQL" = true ] && systemctl is-active --quiet mysql && echo "  ✓ MySQL: running" || echo "  ✗ MySQL: not running"
 [ "$INSTALL_SUPERVISOR" = true ] && systemctl is-active --quiet supervisor && echo "  ✓ Supervisor: running" || echo "  ✗ Supervisor: not running"
+[ "$INSTALL_REDIS" = true ] && systemctl is-active --quiet redis-server && echo "  ✓ Redis: running" || echo "  ✗ Redis: not running"
 
 echo ""
 log_info "Installation log saved. Review any warnings above."

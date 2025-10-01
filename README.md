@@ -349,13 +349,12 @@ init-scrips/
 - [x] Comprehensive documentation
 
 ### 📋 Future Enhancements
-- [ ] PostgreSQL option
 - [ ] Redis support
-- [ ] Apache alternative
 - [ ] Let's Encrypt SSL automation
-- [ ] Docker integration option
 - [ ] Backup/restore scripts
 - [ ] Monitoring tools (Prometheus, Grafana)
+- [ ] Docker integration option
+- [ ] PostgreSQL option
 
 ## 📝 License
 

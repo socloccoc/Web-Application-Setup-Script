@@ -40,6 +40,8 @@ echo "  - PHP + Nginx + PHP-FPM + Composer"
 echo "  - MySQL (including all databases)"
 echo "  - Supervisor"
 echo "  - NVM + Node + Yarn + PM2"
+echo "  - Redis"
+echo "  - Let's Encrypt SSL (Certbot)"
 echo ""
 read -p "Are you sure you want to continue? (yes/no): " confirm
 
@@ -217,6 +219,48 @@ if command -v nginx &> /dev/null; then
     groupdel www-data 2>/dev/null || true
 fi
 
+# Stop and remove Redis
+if systemctl is-active --quiet redis-server 2>/dev/null; then
+    log_info "Stopping Redis..."
+    systemctl stop redis-server
+    systemctl disable redis-server
+fi
+
+if command -v redis-cli &> /dev/null; then
+    log_info "Removing Redis..."
+    apt-get remove -y redis-server redis-tools
+    apt-get purge -y redis-server redis-tools
+
+    # Remove Redis data and configs
+    rm -rf /etc/redis
+    rm -rf /var/lib/redis
+    rm -rf /var/log/redis
+fi
+
+# Remove Certbot (Let's Encrypt)
+if command -v certbot &> /dev/null; then
+    log_info "Removing Certbot..."
+
+    # Stop renewal timer
+    systemctl stop certbot.timer 2>/dev/null || true
+    systemctl disable certbot.timer 2>/dev/null || true
+
+    # Remove certbot packages
+    apt-get remove -y certbot python3-certbot-nginx
+    apt-get purge -y certbot python3-certbot-nginx
+
+    # Ask before removing SSL certificates
+    read -p "Remove all SSL certificates? (yes/no): " remove_certs
+    if [ "$remove_certs" = "yes" ]; then
+        rm -rf /etc/letsencrypt
+        rm -rf /var/lib/letsencrypt
+        rm -rf /var/log/letsencrypt
+        log_info "SSL certificates removed"
+    else
+        log_warn "SSL certificates kept at /etc/letsencrypt"
+    fi
+fi
+
 # Clean up APT
 log_info "Cleaning up package cache..."
 apt-get autoremove -y
@@ -258,6 +302,16 @@ fi
 
 if [ -d "/var/www" ]; then
     log_warn "Web directory still exists: /var/www"
+    remaining=true
+fi
+
+if [ -d "/etc/redis" ]; then
+    log_warn "Redis config directory still exists: /etc/redis"
+    remaining=true
+fi
+
+if [ -d "/etc/letsencrypt" ]; then
+    log_warn "SSL certificates still exist: /etc/letsencrypt"
     remaining=true
 fi
 
