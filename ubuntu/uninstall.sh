@@ -296,6 +296,34 @@ if command -v prometheus &> /dev/null || [ -f "/usr/local/bin/prometheus" ]; the
     log_info "Prometheus removed"
 fi
 
+# Stop and remove Node Exporter
+if systemctl is-active --quiet node_exporter 2>/dev/null; then
+    log_info "Stopping Node Exporter..."
+    systemctl stop node_exporter
+    systemctl disable node_exporter
+fi
+
+if command -v node_exporter &> /dev/null || [ -f "/usr/local/bin/node_exporter" ]; then
+    log_info "Removing Node Exporter..."
+
+    # Stop service
+    systemctl stop node_exporter 2>/dev/null || true
+    systemctl disable node_exporter 2>/dev/null || true
+
+    # Remove systemd service
+    rm -f /etc/systemd/system/node_exporter.service
+    systemctl daemon-reload
+
+    # Remove binary
+    rm -f /usr/local/bin/node_exporter
+
+    # Remove user and group
+    userdel node_exporter 2>/dev/null || true
+    groupdel node_exporter 2>/dev/null || true
+
+    log_info "Node Exporter removed"
+fi
+
 # Stop and remove Grafana
 if systemctl is-active --quiet grafana-server 2>/dev/null; then
     log_info "Stopping Grafana..."

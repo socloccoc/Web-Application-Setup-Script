@@ -677,6 +677,60 @@ EOF
 
     log_info "Prometheus ${PROM_VERSION} installed successfully"
     log_info "Prometheus is running on http://localhost:9090"
+
+    # Install Node Exporter
+    log_info "Installing Node Exporter..."
+
+    # Create node_exporter user
+    if ! id node_exporter &>/dev/null; then
+        useradd --no-create-home --shell /bin/false node_exporter
+    fi
+
+    # Get latest Node Exporter version
+    NODE_EXPORTER_VERSION=$(curl -s https://api.github.com/repos/prometheus/node_exporter/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//')
+
+    if [ -z "$NODE_EXPORTER_VERSION" ]; then
+        NODE_EXPORTER_VERSION="1.7.0"
+        log_warn "Could not detect latest Node Exporter version, using v${NODE_EXPORTER_VERSION}"
+    fi
+
+    cd /tmp
+    wget https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz
+    tar -xvf node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz
+    cd node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64
+
+    # Copy binary
+    cp node_exporter /usr/local/bin/
+    chown node_exporter:node_exporter /usr/local/bin/node_exporter
+
+    # Create systemd service
+    cat > /etc/systemd/system/node_exporter.service <<'EOF'
+[Unit]
+Description=Node Exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+ExecStart=/usr/local/bin/node_exporter
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Start Node Exporter
+    systemctl daemon-reload
+    systemctl start node_exporter
+    systemctl enable node_exporter
+
+    # Cleanup
+    cd /tmp
+    rm -rf node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64*
+
+    log_info "Node Exporter ${NODE_EXPORTER_VERSION} installed successfully"
+    log_info "Node Exporter is running on http://localhost:9100/metrics"
 fi
 
 # Install Grafana
@@ -773,6 +827,7 @@ log_info "Next steps:"
 [ "$INSTALL_CERTBOT" = true ] && echo "  - Obtain SSL: sudo certbot --nginx -d your-domain.com"
 [ "$INSTALL_CERTBOT" = true ] && [ -n "$DOMAIN_NAME" ] && echo "  - Your site: https://$DOMAIN_NAME"
 [ "$INSTALL_PROMETHEUS" = true ] && echo "  - Prometheus UI: http://your-server-ip:9090"
+[ "$INSTALL_PROMETHEUS" = true ] && echo "  - Node Exporter metrics: http://your-server-ip:9100/metrics"
 [ "$INSTALL_GRAFANA" = true ] && echo "  - Grafana UI: http://your-server-ip:3000 (admin/admin)"
 
 echo ""
@@ -783,6 +838,7 @@ log_info "Service status:"
 [ "$INSTALL_SUPERVISOR" = true ] && systemctl is-active --quiet supervisor && echo "  ✓ Supervisor: running" || echo "  ✗ Supervisor: not running"
 [ "$INSTALL_REDIS" = true ] && systemctl is-active --quiet redis-server && echo "  ✓ Redis: running" || echo "  ✗ Redis: not running"
 [ "$INSTALL_PROMETHEUS" = true ] && systemctl is-active --quiet prometheus && echo "  ✓ Prometheus: running" || echo "  ✗ Prometheus: not running"
+[ "$INSTALL_PROMETHEUS" = true ] && systemctl is-active --quiet node_exporter && echo "  ✓ Node Exporter: running" || echo "  ✗ Node Exporter: not running"
 [ "$INSTALL_GRAFANA" = true ] && systemctl is-active --quiet grafana-server && echo "  ✓ Grafana: running" || echo "  ✗ Grafana: not running"
 
 echo ""
