@@ -40,6 +40,8 @@ MYSQL_ROOT_PASSWORD=""
 MYSQL_DB_NAME=""
 MYSQL_DB_USER=""
 MYSQL_DB_PASSWORD=""
+PHP_VERSION=""
+NODE_VERSION=""
 
 # Function to display menu
 show_menu() {
@@ -131,6 +133,64 @@ if [ "$INSTALL_PHP" = false ] && [ "$INSTALL_MYSQL" = false ] && [ "$INSTALL_SUP
     exit 1
 fi
 
+# PHP version selection if selected
+if [ "$INSTALL_PHP" = true ]; then
+    echo ""
+    log_info "PHP Version Selection"
+    echo "Available PHP versions:"
+    echo "1. PHP 8.1"
+    echo "2. PHP 8.2 (recommended)"
+    echo "3. PHP 8.3"
+    read -p "Select PHP version (1-3) [default: 2]: " php_choice
+
+    case ${php_choice:-2} in
+        1)
+            PHP_VERSION="8.1"
+            ;;
+        2)
+            PHP_VERSION="8.2"
+            ;;
+        3)
+            PHP_VERSION="8.3"
+            ;;
+        *)
+            PHP_VERSION="8.2"
+            ;;
+    esac
+    log_info "Selected PHP $PHP_VERSION"
+fi
+
+# Node version selection if selected
+if [ "$INSTALL_NVM" = true ]; then
+    echo ""
+    log_info "Node.js Version Selection"
+    echo "Available Node.js versions:"
+    echo "1. Node LTS (Latest Long Term Support)"
+    echo "2. Node 18.x LTS"
+    echo "3. Node 20.x LTS"
+    echo "4. Node 22.x (Latest)"
+    read -p "Select Node version (1-4) [default: 1]: " node_choice
+
+    case ${node_choice:-1} in
+        1)
+            NODE_VERSION="--lts"
+            ;;
+        2)
+            NODE_VERSION="18"
+            ;;
+        3)
+            NODE_VERSION="20"
+            ;;
+        4)
+            NODE_VERSION="22"
+            ;;
+        *)
+            NODE_VERSION="--lts"
+            ;;
+    esac
+    log_info "Selected Node.js version: ${NODE_VERSION}"
+fi
+
 # MySQL configuration if selected
 if [ "$INSTALL_MYSQL" = true ]; then
     echo ""
@@ -173,10 +233,13 @@ fi
 if [ "$INSTALL_PHP" = true ]; then
     log_info "Installing PHP, Nginx, PHP-FPM, and Composer..."
 
-    # Install PHP 8.2 and extensions
-    dnf install -y php8.2 php8.2-fpm php8.2-cli php8.2-mysqlnd php8.2-pdo \
-        php8.2-mbstring php8.2-xml php8.2-gd php8.2-curl php8.2-zip \
-        php8.2-opcache php8.2-intl php8.2-bcmath
+    # Install PHP and extensions
+    log_info "Installing PHP $PHP_VERSION..."
+    dnf install -y php${PHP_VERSION} php${PHP_VERSION}-fpm php${PHP_VERSION}-cli \
+        php${PHP_VERSION}-mysqlnd php${PHP_VERSION}-pdo php${PHP_VERSION}-mbstring \
+        php${PHP_VERSION}-xml php${PHP_VERSION}-gd php${PHP_VERSION}-zip \
+        php${PHP_VERSION}-opcache php${PHP_VERSION}-intl php${PHP_VERSION}-bcmath \
+        php${PHP_VERSION}-process php${PHP_VERSION}-common php${PHP_VERSION}-sodium
 
     # Install Nginx
     dnf install -y nginx
@@ -269,9 +332,9 @@ if [ "$INSTALL_NVM" = true ]; then
     log_info "Installing NVM..."
     su - $ACTUAL_USER -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash"
 
-    # Load NVM and install Node LTS
-    log_info "Installing Node.js LTS..."
-    su - $ACTUAL_USER -c "export NVM_DIR=\"$ACTUAL_HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && nvm install --lts && nvm use --lts"
+    # Load NVM and install Node
+    log_info "Installing Node.js ${NODE_VERSION}..."
+    su - $ACTUAL_USER -c "export NVM_DIR=\"$ACTUAL_HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && nvm install ${NODE_VERSION} && nvm use ${NODE_VERSION}"
 
     # Install Yarn
     log_info "Installing Yarn..."
