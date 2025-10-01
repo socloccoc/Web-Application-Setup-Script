@@ -420,7 +420,7 @@ if [ "$INSTALL_NVM" = true ]; then
 
     # Load NVM and install Node
     log_info "Installing Node.js ${NODE_VERSION}..."
-    su - $ACTUAL_USER -c "export NVM_DIR=\"$ACTUAL_HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && nvm install ${NODE_VERSION} && nvm use ${NODE_VERSION}"
+    su - $ACTUAL_USER -c "export NVM_DIR=\"$ACTUAL_HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && nvm install ${NODE_VERSION} && nvm use ${NODE_VERSION} && nvm alias default ${NODE_VERSION}"
 
     # Install Yarn
     log_info "Installing Yarn..."
@@ -432,9 +432,22 @@ if [ "$INSTALL_NVM" = true ]; then
 
     # Setup PM2 to start on boot
     log_info "Setting up PM2 startup..."
-    su - $ACTUAL_USER -c "export NVM_DIR=\"$ACTUAL_HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && pm2 startup systemd -u $ACTUAL_USER --hp $ACTUAL_HOME" | grep -v "^export NVM_DIR=" | grep "sudo" | sh
+    STARTUP_CMD=$(su - $ACTUAL_USER -c "export NVM_DIR=\"$ACTUAL_HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && pm2 startup systemd -u $ACTUAL_USER --hp $ACTUAL_HOME" | grep '^sudo env' || true)
+
+    if [ -n "$STARTUP_CMD" ]; then
+        eval "$STARTUP_CMD"
+    fi
 
     log_info "NVM, Node.js, Yarn, and PM2 installed for user: $ACTUAL_USER"
+
+    # Display installed versions
+    NODE_VER=$(su - $ACTUAL_USER -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node --version' 2>/dev/null || echo "N/A")
+    YARN_VER=$(su - $ACTUAL_USER -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && yarn --version' 2>/dev/null || echo "N/A")
+    PM2_VER=$(su - $ACTUAL_USER -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && pm2 --version' 2>/dev/null || echo "N/A")
+
+    log_info "Node.js $NODE_VER installed"
+    log_info "Yarn $YARN_VER installed"
+    log_info "PM2 $PM2_VER installed"
 fi
 
 # Summary
@@ -475,17 +488,22 @@ if [ "$INSTALL_SUPERVISOR" = true ]; then
     echo "Supervisor:"
     echo "  - Version: $(supervisord -v)"
     echo "  - Config: /etc/supervisord.conf"
-    echo "  - Program configs: /etc/supervisord.d/"
+    echo "  - Program configs: /etc/supervisor/conf.d/"
 fi
 
 if [ "$INSTALL_NVM" = true ]; then
     echo ""
     echo "NVM + Node + Yarn + PM2:"
     echo "  - Installed for user: $ACTUAL_USER"
-    echo "  - To use NVM: source ~/.nvm/nvm.sh"
-    echo "  - Node version: $(su - $ACTUAL_USER -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node --version')"
-    echo "  - Yarn version: $(su - $ACTUAL_USER -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && yarn --version')"
-    echo "  - PM2 version: $(su - $ACTUAL_USER -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && pm2 --version')"
+    echo "  - Node version: $NODE_VER"
+    echo "  - Yarn version: $YARN_VER"
+    echo "  - PM2 version: $PM2_VER"
+    echo ""
+    echo "  To use Node/NPM/Yarn/PM2, run as user $ACTUAL_USER:"
+    echo "    su - $ACTUAL_USER"
+    echo "  Or load NVM in current shell:"
+    echo "    export NVM_DIR=\"/home/$ACTUAL_USER/.nvm\""
+    echo "    [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\""
 fi
 
 echo ""
