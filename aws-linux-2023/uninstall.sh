@@ -207,9 +207,9 @@ if systemctl is-active --quiet redis6 2>/dev/null; then
     systemctl disable redis6
 fi
 
-if command -v redis-cli &> /dev/null; then
+if command -v redis6-cli &> /dev/null || command -v redis-cli &> /dev/null; then
     log_info "Removing Redis..."
-    dnf remove -y redis6
+    dnf remove -y redis6 redis6-cli
 
     # Remove Redis data and configs
     rm -rf /etc/redis6

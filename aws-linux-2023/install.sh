@@ -507,7 +507,7 @@ fi
 if [ "$INSTALL_REDIS" = true ]; then
     log_info "Installing Redis..."
 
-    dnf install -y redis6
+    dnf install -y redis6 redis6-cli
 
     # Start and enable Redis
     systemctl start redis6
@@ -519,7 +519,8 @@ if [ "$INSTALL_REDIS" = true ]; then
     # Restart Redis to apply config
     systemctl restart redis6
 
-    log_info "Redis $(redis-cli --version | cut -d ' ' -f 2) installed"
+    REDIS_VERSION=$(redis6-cli --version 2>/dev/null | cut -d ' ' -f 2 || echo "6.2.x")
+    log_info "Redis $REDIS_VERSION installed"
     log_info "Redis is running on 127.0.0.1:6379"
 fi
 
@@ -628,10 +629,10 @@ fi
 if [ "$INSTALL_REDIS" = true ]; then
     echo ""
     echo "Redis:"
-    echo "  - Version: $(redis-cli --version | cut -d ' ' -f 2)"
+    echo "  - Version: $(redis6-cli --version 2>/dev/null | cut -d ' ' -f 2 || echo "6.2.x")"
     echo "  - Running on: 127.0.0.1:6379"
     echo "  - Config: /etc/redis6/redis6.conf"
-    echo "  - Test connection: redis-cli ping"
+    echo "  - Test connection: redis6-cli ping"
 fi
 
 if [ "$INSTALL_CERTBOT" = true ]; then
