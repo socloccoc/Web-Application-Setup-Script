@@ -16,8 +16,11 @@ These scripts automate the installation and configuration of common web applicat
 - **Web Servers**: Nginx
 - **Languages**: PHP (multiple versions), Node.js (via NVM)
 - **Databases**: MySQL
+- **Caching**: Redis
 - **Process Managers**: Supervisor, PM2
 - **Package Managers**: Composer, Yarn, npm
+- **SSL/TLS**: Let's Encrypt (Certbot)
+- **Monitoring**: Prometheus, Grafana, Node Exporter
 
 ## 🚀 Quick Start
 
@@ -33,6 +36,8 @@ sudo ./install.sh
 - PHP 8.1/8.2/8.3 selection
 - Node.js LTS/18/20/22 selection
 - MySQL 8.0 with auto database creation
+- Redis caching server
+- Let's Encrypt SSL automation
 - Supervisor process control
 - Complete uninstall script
 
@@ -51,6 +56,9 @@ sudo ./install.sh
 - PHP 8.1/8.2/8.3 from Ondřej PPA
 - Node.js LTS/18/20/22 selection
 - MySQL 8.0 with auto database creation
+- Redis caching server
+- Let's Encrypt SSL automation
+- Prometheus + Grafana + Node Exporter monitoring
 - Supervisor process control
 - Complete uninstall script
 
@@ -64,7 +72,10 @@ All scripts provide interactive menus to install:
 2. **Database**: MySQL with user creation
 3. **Process Control**: Supervisor
 4. **Node.js Stack**: Nginx + NVM + Node + Yarn + PM2
-5. **All Services**: Complete stack installation
+5. **Caching**: Redis
+6. **SSL/TLS**: Let's Encrypt (Certbot)
+7. **Monitoring**: Prometheus + Grafana + Node Exporter (Ubuntu only)
+8. **All Services**: Complete stack installation
 
 ## 🔧 Common Features
 
@@ -185,7 +196,7 @@ sudo systemctl reload nginx
 ```bash
 # Install all services
 sudo ./install.sh
-# Select: Option 5 (All services)
+# Select: Option 8 (All services)
 # Configure: PHP 8.2, Node.js 20, MySQL database
 
 # PHP backend
@@ -201,6 +212,24 @@ pm2 start npm --name frontend -- start
 # Database
 mysql -u root -p
 # Import schema and data
+```
+
+### Example 4: Monitoring Stack (Ubuntu)
+
+```bash
+# Install monitoring tools
+sudo ./install.sh
+# Select: Option 7 (Prometheus + Grafana + Node Exporter)
+
+# Access dashboards
+# Prometheus: http://your-server-ip:9090
+# Grafana: http://your-server-ip:3000 (admin/admin)
+# Node Exporter: http://your-server-ip:9100/metrics
+
+# Import Grafana dashboards
+# 1. Login to Grafana
+# 2. Go to Dashboards → Import
+# 3. Use dashboard ID: 1860 (Node Exporter Full)
 ```
 
 ## 🐛 Troubleshooting
@@ -261,6 +290,8 @@ sudo apt-cache policy  # Ubuntu
 | Node.js | LTS, 18, 20, 22 |
 | MySQL | 8.0 |
 | Nginx | Latest from repo |
+| Redis | 6.x |
+| Certbot | Latest from repo |
 | Supervisor | Latest from pip3 |
 
 ### Ubuntu
@@ -271,6 +302,11 @@ sudo apt-cache policy  # Ubuntu
 | Node.js | LTS, 18, 20, 22 |
 | MySQL | 8.0 |
 | Nginx | Latest from repo |
+| Redis | Latest from repo |
+| Certbot | Latest from repo |
+| Prometheus | Latest (auto-detect) |
+| Grafana | Latest from official repo |
+| Node Exporter | Latest (auto-detect) |
 | Supervisor | Latest from repo |
 
 ## 📁 Project Structure
@@ -332,6 +368,11 @@ init-scrips/
 | PHP Source | Amazon repos | Ondřej PPA |
 | Node.js | LTS, 18, 20, 22 | LTS, 18, 20, 22 |
 | MySQL | 8.0 (Oracle repo) | 8.0 (Ubuntu repo) |
+| Redis | ✅ | ✅ |
+| Certbot/SSL | ✅ | ✅ |
+| Prometheus | ❌ | ✅ |
+| Grafana | ❌ | ✅ |
+| Node Exporter | ❌ | ✅ |
 | Supervisor | pip3 | APT |
 | Nginx | ✅ | ✅ |
 | Firewall | firewalld | ufw |
@@ -351,7 +392,7 @@ init-scrips/
 ### 📋 Future Enhancements
 - [x] Redis support
 - [x] Let's Encrypt SSL automation
-- [ ] Monitoring tools (Prometheus, Grafana)
+- [x] Monitoring tools (Prometheus, Grafana)
 - [ ] Backup/restore scripts
 - [ ] Docker integration option
 - [ ] PostgreSQL option
@@ -368,6 +409,10 @@ These scripts are provided as-is for educational and development purposes.
 - [PHP Documentation](https://www.php.net/docs.php)
 - [Node.js Documentation](https://nodejs.org/docs/)
 - [MySQL Documentation](https://dev.mysql.com/doc/)
+- [Redis Documentation](https://redis.io/documentation)
+- [Prometheus Documentation](https://prometheus.io/docs/)
+- [Grafana Documentation](https://grafana.com/docs/)
+- [Let's Encrypt Documentation](https://letsencrypt.org/docs/)
 
 ---
 
