@@ -615,9 +615,13 @@ if [ "$INSTALL_PROMETHEUS" = true ]; then
     cp prometheus /usr/local/bin/
     cp promtool /usr/local/bin/
 
-    # Copy console files
-    cp -r consoles /etc/prometheus
-    cp -r console_libraries /etc/prometheus
+    # Copy console files (if they exist in older versions)
+    if [ -d "consoles" ]; then
+        cp -r consoles /etc/prometheus
+    fi
+    if [ -d "console_libraries" ]; then
+        cp -r console_libraries /etc/prometheus
+    fi
 
     # Set ownership
     chown prometheus:prometheus /usr/local/bin/prometheus
@@ -655,10 +659,8 @@ User=prometheus
 Group=prometheus
 Type=simple
 ExecStart=/usr/local/bin/prometheus \
-    --config.file /etc/prometheus/prometheus.yml \
-    --storage.tsdb.path /var/lib/prometheus/ \
-    --web.console.templates=/etc/prometheus/consoles \
-    --web.console.libraries=/etc/prometheus/console_libraries
+    --config.file=/etc/prometheus/prometheus.yml \
+    --storage.tsdb.path=/var/lib/prometheus/
 
 [Install]
 WantedBy=multi-user.target
