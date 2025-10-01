@@ -418,32 +418,67 @@ if [ "$INSTALL_NVM" = true ]; then
     log_info "Installing NVM..."
     su - $ACTUAL_USER -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash"
 
+    # Wait a moment for NVM to be ready
+    sleep 2
+
     # Load NVM and install Node
     log_info "Installing Node.js ${NODE_VERSION}..."
-    su - $ACTUAL_USER -c "export NVM_DIR=\"$ACTUAL_HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && nvm install ${NODE_VERSION} && nvm use ${NODE_VERSION} && nvm alias default ${NODE_VERSION}"
+    echo "This may take a few minutes..."
+
+    su - $ACTUAL_USER bash -c "
+        export NVM_DIR=\"$ACTUAL_HOME/.nvm\"
+        [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
+
+        echo \"==> Loading NVM...\"
+        nvm --version || { echo \"ERROR: NVM not loaded properly\"; exit 1; }
+
+        echo \"==> Installing Node.js ${NODE_VERSION}...\"
+        nvm install ${NODE_VERSION}
+
+        echo \"==> Setting default Node version...\"
+        nvm use ${NODE_VERSION}
+        nvm alias default ${NODE_VERSION}
+
+        echo \"==> Verifying Node installation...\"
+        node --version
+        npm --version
+    "
+
+    if [ $? -ne 0 ]; then
+        log_error "Failed to install Node.js"
+        exit 1
+    fi
 
     # Install Yarn
     log_info "Installing Yarn..."
-    su - $ACTUAL_USER -c "export NVM_DIR=\"$ACTUAL_HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && npm install -g yarn"
+    su - $ACTUAL_USER bash -c "
+        export NVM_DIR=\"$ACTUAL_HOME/.nvm\"
+        [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
+        npm install -g yarn
+    "
 
     # Install PM2
     log_info "Installing PM2..."
-    su - $ACTUAL_USER -c "export NVM_DIR=\"$ACTUAL_HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && npm install -g pm2"
+    su - $ACTUAL_USER bash -c "
+        export NVM_DIR=\"$ACTUAL_HOME/.nvm\"
+        [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
+        npm install -g pm2
+    "
 
     # Setup PM2 to start on boot
     log_info "Setting up PM2 startup..."
-    STARTUP_CMD=$(su - $ACTUAL_USER -c "export NVM_DIR=\"$ACTUAL_HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && pm2 startup systemd -u $ACTUAL_USER --hp $ACTUAL_HOME" | grep '^sudo env' || true)
-
-    if [ -n "$STARTUP_CMD" ]; then
-        eval "$STARTUP_CMD"
-    fi
+    su - $ACTUAL_USER bash -c "
+        export NVM_DIR=\"$ACTUAL_HOME/.nvm\"
+        [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
+        pm2 startup systemd -u $ACTUAL_USER --hp $ACTUAL_HOME
+    " | grep '^sudo env' | sh || true
 
     log_info "NVM, Node.js, Yarn, and PM2 installed for user: $ACTUAL_USER"
 
     # Display installed versions
-    NODE_VER=$(su - $ACTUAL_USER -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node --version' 2>/dev/null || echo "N/A")
-    YARN_VER=$(su - $ACTUAL_USER -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && yarn --version' 2>/dev/null || echo "N/A")
-    PM2_VER=$(su - $ACTUAL_USER -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && pm2 --version' 2>/dev/null || echo "N/A")
+    NODE_VER=$(su - $ACTUAL_USER bash -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node --version' 2>/dev/null || echo "N/A")
+    YARN_VER=$(su - $ACTUAL_USER bash -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && yarn --version' 2>/dev/null || echo "N/A")
+    PM2_VER=$(su - $ACTUAL_USER bash -c 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && pm2 --version' 2>/dev/null || echo "N/A")
 
     log_info "Node.js $NODE_VER installed"
     log_info "Yarn $YARN_VER installed"
